@@ -410,6 +410,10 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   StreamSubscription<dynamic>? _eventSubscription;
   _VideoAppLifeCycleObserver? _lifeCycleObserver;
 
+  /// Stream controller for auto-pause events
+  final StreamController<Duration> _autoPauseStreamController =
+      StreamController<Duration>.broadcast();
+
   /// The id of a player that hasn't been initialized.
   @visibleForTesting
   static const int kUninitializedPlayerId = -1;
@@ -538,6 +542,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
           // Update position and isPlaying state when auto-pause occurs
           if (event.autoPausePosition != null) {
             _updatePosition(event.autoPausePosition!);
+            // Notify listeners about the auto-pause
+            _autoPauseStreamController.add(event.autoPausePosition!);
           }
           value = value.copyWith(isPlaying: false);
           _timer?.cancel();
@@ -582,6 +588,7 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       _lifeCycleObserver?.dispose();
     }
     _isDisposed = true;
+    await _autoPauseStreamController.close();
     super.dispose();
   }
 
@@ -825,6 +832,14 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       super.removeListener(listener);
     }
   }
+
+  /// Stream that emits the position when an auto-pause occurs.
+  ///
+  /// Use this to be notified when playback automatically pauses at a
+  /// scheduled pause point set via [setPausePoints].
+  ///
+  /// The emitted [Duration] is the position where the auto-pause occurred.
+  Stream<Duration> get onAutoPause => _autoPauseStreamController.stream;
 
   /// Sets positions where the video will automatically pause.
   ///
