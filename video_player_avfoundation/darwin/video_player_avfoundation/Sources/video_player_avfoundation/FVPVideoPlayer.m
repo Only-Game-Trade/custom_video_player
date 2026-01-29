@@ -168,7 +168,7 @@ static NSDictionary<NSString *, NSValue *> *FVPGetPlayerItemObservations(void) {
   _disposed = YES;
 
   // Clean up pause point observer before releasing
-  [self clearAllPausePointsWithError:error];
+  [self clearAllPausePoints:error];
 
   if (_listenersRegistered) {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -516,7 +516,7 @@ NS_INLINE CGFloat radiansToDegrees(CGFloat radians) {
 - (void)setPausePoints:(NSArray<NSNumber *> *)pausePointsInMilliseconds
                  error:(FlutterError *_Nullable *_Nonnull)error {
   // Remove any existing pause points before setting new ones
-  [self clearAllPausePointsWithError:error];
+  [self clearAllPausePoints:error];
   
   if (pausePointsInMilliseconds.count == 0) return;
   
@@ -552,7 +552,7 @@ NS_INLINE CGFloat radiansToDegrees(CGFloat radians) {
   return times;
 }
 
-- (void)clearAllPausePointsWithError:(FlutterError *_Nullable *_Nonnull)error {
+- (void)clearAllPausePoints:(FlutterError *_Nullable *_Nonnull)error {
   if (_pausePointBoundaryObserver != nil) {
     [_player removeTimeObserver:_pausePointBoundaryObserver];
     _pausePointBoundaryObserver = nil;
