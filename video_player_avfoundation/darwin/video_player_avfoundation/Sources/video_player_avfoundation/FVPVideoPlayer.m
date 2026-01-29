@@ -526,13 +526,17 @@ NS_INLINE CGFloat radiansToDegrees(CGFloat radians) {
   _pausePointBoundaryObserver = [_player addBoundaryTimeObserverForTimes:pauseTimes
                                                                    queue:dispatch_get_main_queue()
                                                               usingBlock:^{
+    // Capture strong reference to avoid race condition
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf) return;
+    
     // Pause playback when we hit a pause point
-    [weakSelf.player pause];
-    weakSelf->_isPlaying = NO;
+    [strongSelf.player pause];
+    strongSelf->_isPlaying = NO;
     
     // Notify Flutter about the auto-pause
-    int64_t currentPositionMs = FVPCMTimeToMillis(weakSelf.player.currentTime);
-    [weakSelf.eventListener videoPlayerDidAutoPauseAtPosition:currentPositionMs];
+    int64_t currentPositionMs = FVPCMTimeToMillis(strongSelf.player.currentTime);
+    [strongSelf.eventListener videoPlayerDidAutoPauseAtPosition:currentPositionMs];
   }];
 }
 
