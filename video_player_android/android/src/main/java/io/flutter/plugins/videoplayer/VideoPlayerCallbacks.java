@@ -26,4 +26,7 @@ public interface VideoPlayerCallbacks {
   void onIsPlayingStateUpdate(boolean isPlaying);
 
   void onAudioTrackChanged(@Nullable String selectedTrackId);
+
+  /** Called when playback automatically pauses at a scheduled pause point. */
+  void onAutoPauseTriggered(long positionInMilliseconds);
 }

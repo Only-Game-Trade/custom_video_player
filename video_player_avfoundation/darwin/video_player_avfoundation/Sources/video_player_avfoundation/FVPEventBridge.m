@@ -103,6 +103,10 @@
   [self sendOrQueue:@{@"event" : @"isPlayingStateUpdate", @"isPlaying" : @(playing)}];
 }
 
+- (void)videoPlayerDidAutoPauseAtPosition:(int64_t)positionInMilliseconds {
+  [self sendOrQueue:@{@"event" : @"autoPause", @"position" : @(positionInMilliseconds)}];
+}
+
 - (void)videoPlayerWasDisposed {
   [self.eventChannel setStreamHandler:nil];
 }

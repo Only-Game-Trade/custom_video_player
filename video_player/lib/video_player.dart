@@ -534,6 +534,13 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
           } else {
             value = value.copyWith(isPlaying: event.isPlaying);
           }
+        case VideoEventType.autoPause:
+          // Update position and isPlaying state when auto-pause occurs
+          if (event.autoPausePosition != null) {
+            _updatePosition(event.autoPausePosition!);
+          }
+          value = value.copyWith(isPlaying: false);
+          _timer?.cancel();
         case VideoEventType.unknown:
           break;
       }
@@ -817,6 +824,32 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     if (!_isDisposed) {
       super.removeListener(listener);
     }
+  }
+
+  /// Sets positions where the video will automatically pause.
+  ///
+  /// This uses native APIs (ExoPlayer on Android, AVPlayer on iOS) for precise
+  /// timing without Flutter-to-native communication latency.
+  ///
+  /// Pause points fire every time playback crosses them, including after
+  /// seeking back and replaying.
+  ///
+  /// [pausePoints] is a list of durations at which playback should automatically
+  /// pause. Pass an empty list to clear all pause points.
+  Future<void> setPausePoints(List<Duration> pausePoints) async {
+    if (_isDisposedOrNotInitialized) {
+      return;
+    }
+    final pausePointsMs = pausePoints.map((d) => d.inMilliseconds).toList();
+    await _videoPlayerPlatform.setPausePoints(_playerId, pausePointsMs);
+  }
+
+  /// Removes all scheduled pause points.
+  Future<void> clearAllPausePoints() async {
+    if (_isDisposedOrNotInitialized) {
+      return;
+    }
+    await _videoPlayerPlatform.clearAllPausePoints(_playerId);
   }
 
   bool get _isDisposedOrNotInitialized => _isDisposed || !value.isInitialized;

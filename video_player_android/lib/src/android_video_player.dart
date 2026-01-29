@@ -266,6 +266,16 @@ class AndroidVideoPlayer extends VideoPlayerPlatform {
     return true;
   }
 
+  @override
+  Future<void> setPausePoints(int playerId, List<int> pausePointsInMilliseconds) {
+    return _playerWith(id: playerId).setPausePoints(pausePointsInMilliseconds);
+  }
+
+  @override
+  Future<void> clearAllPausePoints(int playerId) {
+    return _playerWith(id: playerId).clearAllPausePoints();
+  }
+
   _PlayerInstance _playerWith({required int id}) {
     final _PlayerInstance? player = _players[id];
     return player ?? (throw StateError('No active player with ID $id.'));
@@ -351,6 +361,14 @@ class _PlayerInstance {
 
   Future<NativeAudioTrackData> getAudioTracks() {
     return _api.getAudioTracks();
+  }
+
+  Future<void> setPausePoints(List<int> pausePointsInMilliseconds) {
+    return _api.setPausePoints(pausePointsInMilliseconds);
+  }
+
+  Future<void> clearAllPausePoints() {
+    return _api.clearAllPausePoints();
   }
 
   Future<void> selectAudioTrack(String trackId) async {
@@ -487,6 +505,13 @@ class _PlayerInstance {
             !_audioTrackSelectionCompleter!.isCompleted) {
           _audioTrackSelectionCompleter!.complete();
         }
+      case AutoPauseTriggeredEvent _:
+        _eventStreamController.add(
+          VideoEvent(
+            eventType: VideoEventType.autoPause,
+            autoPausePosition: Duration(milliseconds: event.positionInMilliseconds),
+          ),
+        );
     }
   }
 

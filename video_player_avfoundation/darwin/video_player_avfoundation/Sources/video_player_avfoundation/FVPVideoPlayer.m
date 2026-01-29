@@ -69,6 +69,9 @@ static NSDictionary<NSString *, NSValue *> *FVPGetPlayerItemObservations(void) {
 @implementation FVPVideoPlayer {
   // Whether or not player and player item listeners have ever been registered.
   BOOL _listenersRegistered;
+  
+  // Stores the boundary observer token so we can remove it later
+  id _pausePointBoundaryObserver;
 }
 
 - (instancetype)initWithPlayerItem:(AVPlayerItem *)item
@@ -163,6 +166,9 @@ static NSDictionary<NSString *, NSValue *> *FVPGetPlayerItemObservations(void) {
     return;
   }
   _disposed = YES;
+
+  // Clean up pause point observer before releasing
+  [self clearAllPausePointsWithError:error];
 
   if (_listenersRegistered) {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -504,6 +510,52 @@ NS_INLINE CGFloat radiansToDegrees(CGFloat radians) {
   if (audioGroup && trackIndex >= 0 && trackIndex < (NSInteger)audioGroup.options.count) {
     AVMediaSelectionOption *option = audioGroup.options[trackIndex];
     [currentItem selectMediaOption:option inMediaSelectionGroup:audioGroup];
+  }
+}
+
+- (void)setPausePoints:(NSArray<NSNumber *> *)pausePointsInMilliseconds
+                 error:(FlutterError *_Nullable *_Nonnull)error {
+  // Remove any existing pause points before setting new ones
+  [self clearAllPausePointsWithError:error];
+  
+  if (pausePointsInMilliseconds.count == 0) return;
+  
+  NSMutableArray<NSValue *> *pauseTimes = [self convertMillisecondsArrayToCMTimes:pausePointsInMilliseconds];
+  
+  __weak typeof(self) weakSelf = self;
+  _pausePointBoundaryObserver = [_player addBoundaryTimeObserverForTimes:pauseTimes
+                                                                   queue:dispatch_get_main_queue()
+                                                              usingBlock:^{
+    // Pause playback when we hit a pause point
+    [weakSelf.player pause];
+    weakSelf->_isPlaying = NO;
+    
+    // Notify Flutter about the auto-pause
+    int64_t currentPositionMs = FVPCMTimeToMillis(weakSelf.player.currentTime);
+    [weakSelf.eventListener videoPlayerDidAutoPauseAtPosition:currentPositionMs];
+  }];
+}
+
+/// Converts an array of milliseconds to CMTime values using the video's timescale
+- (NSMutableArray<NSValue *> *)convertMillisecondsArrayToCMTimes:(NSArray<NSNumber *> *)millisecondsArray {
+  NSMutableArray<NSValue *> *times = [NSMutableArray array];
+  
+  // Use the video's native timescale for accurate timing, fallback to 1000 if unavailable
+  int32_t timescale = _player.currentItem.duration.timescale ?: 1000;
+  
+  for (NSNumber *msNumber in millisecondsArray) {
+    double seconds = msNumber.doubleValue / 1000.0;
+    CMTime time = CMTimeMakeWithSeconds(seconds, timescale);
+    [times addObject:[NSValue valueWithCMTime:time]];
+  }
+  
+  return times;
+}
+
+- (void)clearAllPausePointsWithError:(FlutterError *_Nullable *_Nonnull)error {
+  if (_pausePointBoundaryObserver != nil) {
+    [_player removeTimeObserver:_pausePointBoundaryObserver];
+    _pausePointBoundaryObserver = nil;
   }
 }
 

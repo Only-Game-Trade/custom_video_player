@@ -153,6 +153,25 @@ abstract class VideoPlayerPlatform extends PlatformInterface {
   bool isAudioTrackSupportAvailable() {
     return false;
   }
+
+  /// Sets positions where the video will automatically pause.
+  ///
+  /// This uses native APIs (ExoPlayer on Android, AVPlayer on iOS) for precise
+  /// timing without Flutter-to-native communication latency.
+  ///
+  /// Pause points fire every time playback crosses them, including after
+  /// seeking back and replaying.
+  ///
+  /// [pausePointsInMilliseconds] is a list of positions in milliseconds where
+  /// playback should automatically pause.
+  Future<void> setPausePoints(int playerId, List<int> pausePointsInMilliseconds) {
+    throw UnimplementedError('setPausePoints() has not been implemented.');
+  }
+
+  /// Removes all scheduled pause points for the player.
+  Future<void> clearAllPausePoints(int playerId) {
+    throw UnimplementedError('clearAllPausePoints() has not been implemented.');
+  }
 }
 
 class _PlaceholderImplementation extends VideoPlayerPlatform {}
@@ -273,6 +292,7 @@ class VideoEvent {
     this.rotationCorrection,
     this.buffered,
     this.isPlaying,
+    this.autoPausePosition,
   });
 
   /// The type of the event.
@@ -303,6 +323,11 @@ class VideoEvent {
   /// Only used if [eventType] is [VideoEventType.isPlayingStateUpdate].
   final bool? isPlaying;
 
+  /// The position where playback automatically paused.
+  ///
+  /// Only used if [eventType] is [VideoEventType.autoPause].
+  final Duration? autoPausePosition;
+
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
@@ -313,7 +338,8 @@ class VideoEvent {
             size == other.size &&
             rotationCorrection == other.rotationCorrection &&
             listEquals(buffered, other.buffered) &&
-            isPlaying == other.isPlaying;
+            isPlaying == other.isPlaying &&
+            autoPausePosition == other.autoPausePosition;
   }
 
   @override
@@ -324,6 +350,7 @@ class VideoEvent {
     rotationCorrection,
     buffered,
     isPlaying,
+    autoPausePosition,
   );
 }
 
@@ -354,6 +381,11 @@ enum VideoEventType {
   /// This event is fired when the video starts or pauses due to user actions or
   /// phone calls, or other app media such as music players.
   isPlayingStateUpdate,
+
+  /// Playback automatically paused at a scheduled pause point.
+  ///
+  /// This event is fired when playback reaches a position set via [setPausePoints].
+  autoPause,
 
   /// An unknown event has been received.
   unknown,

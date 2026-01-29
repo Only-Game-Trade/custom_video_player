@@ -213,6 +213,16 @@ class AVFoundationVideoPlayer extends VideoPlayerPlatform {
   }
 
   @override
+  Future<void> setPausePoints(int playerId, List<int> pausePointsInMilliseconds) {
+    return _playerWith(id: playerId).setPausePoints(pausePointsInMilliseconds);
+  }
+
+  @override
+  Future<void> clearAllPausePoints(int playerId) {
+    return _playerWith(id: playerId).clearAllPausePoints();
+  }
+
+  @override
   Widget buildView(int playerId) {
     return buildViewWithOptions(VideoViewOptions(playerId: playerId));
   }
@@ -289,6 +299,11 @@ class _PlayerInstance {
   Future<void> selectAudioTrack(int trackIndex) =>
       _api.selectAudioTrack(trackIndex);
 
+  Future<void> setPausePoints(List<int> pausePointsInMilliseconds) =>
+      _api.setPausePoints(pausePointsInMilliseconds);
+
+  Future<void> clearAllPausePoints() => _api.clearAllPausePoints();
+
   Stream<VideoEvent> get videoEvents {
     _eventSubscription ??= _eventChannel.receiveBroadcastStream().listen(
       _onStreamEvent,
@@ -330,6 +345,10 @@ class _PlayerInstance {
       'isPlayingStateUpdate' => VideoEvent(
         eventType: VideoEventType.isPlayingStateUpdate,
         isPlaying: map['isPlaying'] as bool,
+      ),
+      'autoPause' => VideoEvent(
+        eventType: VideoEventType.autoPause,
+        autoPausePosition: Duration(milliseconds: map['position'] as int),
       ),
       _ => VideoEvent(eventType: VideoEventType.unknown),
     });

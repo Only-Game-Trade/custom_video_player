@@ -29,4 +29,6 @@
 - (void)videoPlayerDidSetPlaying:(BOOL)playing;
 /// Called when the video player has been disposed on the Dart side.
 - (void)videoPlayerWasDisposed;
+/// Called when playback automatically pauses at a scheduled pause point.
+- (void)videoPlayerDidAutoPauseAtPosition:(int64_t)positionInMilliseconds;
 @end

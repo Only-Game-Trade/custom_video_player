@@ -18,7 +18,9 @@ import androidx.media3.common.TrackGroup;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
+import android.os.Looper;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.PlayerMessage;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import io.flutter.view.TextureRegistry.SurfaceProducer;
 import java.util.ArrayList;
@@ -36,6 +38,9 @@ public abstract class VideoPlayer implements VideoPlayerInstanceApi {
   @NonNull protected ExoPlayer exoPlayer;
   // TODO: Migrate to stable API, see https://github.com/flutter/flutter/issues/147039.
   @UnstableApi @Nullable protected DefaultTrackSelector trackSelector;
+
+  // Stores scheduled pause point messages so we can cancel them later
+  @NonNull private final List<PlayerMessage> scheduledPausePointMessages = new ArrayList<>();
 
   /** A closure-compatible signature since {@link java.util.function.Supplier} is API level 24. */
   public interface ExoPlayerProvider {
@@ -233,10 +238,49 @@ public abstract class VideoPlayer implements VideoPlayerInstanceApi {
         trackSelector.buildUponParameters().setOverrideForType(override).build());
   }
 
+  @Override
+  public void setPausePoints(@NonNull List<Long> pausePointsInMilliseconds) {
+    // Remove any previously scheduled pause points before adding new ones
+    clearAllPausePoints();
+
+    for (Long positionMs : pausePointsInMilliseconds) {
+      PlayerMessage pausePointMessage = createPausePointMessage(positionMs);
+      scheduledPausePointMessages.add(pausePointMessage);
+    }
+  }
+
+  /**
+   * Creates a message that triggers when playback reaches the given position.
+   * The message pauses playback and notifies Flutter.
+   */
+  private PlayerMessage createPausePointMessage(Long positionMs) {
+    return exoPlayer.createMessage((messageType, payload) -> {
+          exoPlayer.pause();
+          videoPlayerEvents.onAutoPauseTriggered(positionMs);
+        })
+        .setLooper(Looper.getMainLooper())
+        .setPosition(0, positionMs)
+        // Using false so the pause point fires again if user seeks back and replays.
+        // Note: This has a known ExoPlayer bug where seeking exactly to this position
+        // can cause repeated callbacks, but we accept this trade-off.
+        .setDeleteAfterDelivery(false)
+        .send();
+  }
+
+  @Override
+  public void clearAllPausePoints() {
+    for (PlayerMessage message : scheduledPausePointMessages) {
+      message.cancel();
+    }
+    scheduledPausePointMessages.clear();
+  }
+
   public void dispose() {
     if (disposeHandler != null) {
       disposeHandler.onDispose();
     }
+    // Clean up pause points before releasing
+    clearAllPausePoints();
     exoPlayer.release();
   }
 }

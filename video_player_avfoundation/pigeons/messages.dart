@@ -93,4 +93,16 @@ abstract class VideoPlayerInstanceApi {
   List<MediaSelectionAudioTrackData> getAudioTracks();
   @ObjCSelector('selectAudioTrackAtIndex:')
   void selectAudioTrack(int trackIndex);
+
+  /// Sets positions where playback will automatically pause.
+  ///
+  /// [pausePointsInMilliseconds] is a list of positions in milliseconds where
+  /// playback should automatically pause. Pause points fire every time playback
+  /// crosses them, including after seeking back and replaying.
+  @ObjCSelector('setPausePoints:')
+  void setPausePoints(List<int> pausePointsInMilliseconds);
+
+  /// Removes all scheduled pause points.
+  @ObjCSelector('clearAllPausePoints')
+  void clearAllPausePoints();
 }

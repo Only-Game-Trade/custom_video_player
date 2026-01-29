@@ -60,6 +60,14 @@ class AudioTrackChangedEvent extends PlatformVideoEvent {
   late final String? selectedTrackId;
 }
 
+/// Sent when playback automatically pauses at a scheduled pause point.
+///
+/// This event is fired when playback reaches a position set via setPausePoints.
+class AutoPauseTriggeredEvent extends PlatformVideoEvent {
+  /// The playback position (in milliseconds) where the auto-pause occurred.
+  late final int positionInMilliseconds;
+}
+
 /// Information passed to the platform view creation.
 class PlatformVideoViewCreationParams {
   const PlatformVideoViewCreationParams({required this.playerId});
@@ -192,6 +200,16 @@ abstract class VideoPlayerInstanceApi {
 
   /// Selects which audio track is chosen for playback from its [groupIndex] and [trackIndex]
   void selectAudioTrack(int groupIndex, int trackIndex);
+
+  /// Sets positions where playback will automatically pause.
+  ///
+  /// [pausePointsInMilliseconds] is a list of positions in milliseconds where
+  /// playback should automatically pause. Pause points fire every time playback
+  /// crosses them, including after seeking back and replaying.
+  void setPausePoints(List<int> pausePointsInMilliseconds);
+
+  /// Removes all scheduled pause points.
+  void clearAllPausePoints();
 }
 
 @EventChannelApi()
