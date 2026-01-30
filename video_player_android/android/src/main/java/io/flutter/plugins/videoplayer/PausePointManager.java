@@ -5,8 +5,9 @@
 package io.flutter.plugins.videoplayer;
 
 import androidx.annotation.NonNull;
-import com.google.android.exoplayer2.ExoPlayer;
-import com.google.android.exoplayer2.PlayerMessage;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.PlayerMessage;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,6 +17,7 @@ import java.util.List;
  * <p>This class is self-contained and handles all pause point logic using ExoPlayer's PlayerMessage
  * API for frame-accurate timing. It can be easily copied when upgrading video_player versions.
  */
+@UnstableApi
 public class PausePointManager {
 
   /** Listener interface for pause point events. */
