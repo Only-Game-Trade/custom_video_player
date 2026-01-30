@@ -193,12 +193,16 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
 
   // #region auto-pause
   @Override
+  @SuppressWarnings("unchecked")
   public void setPausePoints(@NonNull PausePointsMessage arg) {
     VideoPlayer player = videoPlayers.get(arg.getTextureId());
     List<Long> pausePoints = new ArrayList<>();
-    for (Long point : arg.getPausePointsInMilliseconds()) {
-      if (point != null) {
-        pausePoints.add(point);
+    // Pigeon may send integers as Integer or Long depending on value size,
+    // so we need to handle both types safely
+    List<?> rawPoints = (List<?>) arg.getPausePointsInMilliseconds();
+    for (Object point : rawPoints) {
+      if (point instanceof Number) {
+        pausePoints.add(((Number) point).longValue());
       }
     }
     player.setPausePoints(pausePoints);
