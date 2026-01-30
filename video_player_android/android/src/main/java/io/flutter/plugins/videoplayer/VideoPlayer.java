@@ -1,96 +1,272 @@
-// Copyright 2013 The Flutter Authors
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 package io.flutter.plugins.videoplayer;
 
-import static androidx.media3.common.Player.REPEAT_MODE_ALL;
-import static androidx.media3.common.Player.REPEAT_MODE_OFF;
+import static com.google.android.exoplayer2.Player.REPEAT_MODE_ALL;
+import static com.google.android.exoplayer2.Player.REPEAT_MODE_OFF;
 
+import android.content.Context;
+import android.net.Uri;
+import android.view.Surface;
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.media3.common.AudioAttributes;
-import androidx.media3.common.C;
-import androidx.media3.common.Format;
-import androidx.media3.common.MediaItem;
-import androidx.media3.common.PlaybackParameters;
-import androidx.media3.common.TrackGroup;
-import androidx.media3.common.TrackSelectionOverride;
-import androidx.media3.common.Tracks;
-import androidx.media3.common.util.UnstableApi;
-import android.os.Looper;
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.PlayerMessage;
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
-import io.flutter.view.TextureRegistry.SurfaceProducer;
-import java.util.ArrayList;
+import androidx.annotation.VisibleForTesting;
+import com.google.android.exoplayer2.C;
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.Format;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.PlaybackException;
+import com.google.android.exoplayer2.PlaybackParameters;
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.Player.Listener;
+import com.google.android.exoplayer2.audio.AudioAttributes;
+import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.ProgressiveMediaSource;
+import com.google.android.exoplayer2.source.dash.DashMediaSource;
+import com.google.android.exoplayer2.source.dash.DefaultDashChunkSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.source.smoothstreaming.DefaultSsChunkSource;
+import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
+import com.google.android.exoplayer2.upstream.DataSource;
+import com.google.android.exoplayer2.upstream.DefaultDataSource;
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import com.google.android.exoplayer2.util.Util;
+import io.flutter.plugin.common.EventChannel;
+import io.flutter.view.TextureRegistry;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-/**
- * A class responsible for managing video playback using {@link ExoPlayer}.
- *
- * <p>It provides methods to control playback, adjust volume, and handle seeking.
- */
-public abstract class VideoPlayer implements VideoPlayerInstanceApi {
-  @NonNull protected final VideoPlayerCallbacks videoPlayerEvents;
-  @Nullable protected final SurfaceProducer surfaceProducer;
-  @Nullable private DisposeHandler disposeHandler;
-  @NonNull protected ExoPlayer exoPlayer;
-  // TODO: Migrate to stable API, see https://github.com/flutter/flutter/issues/147039.
-  @UnstableApi @Nullable protected DefaultTrackSelector trackSelector;
+final class VideoPlayer {
+  private static final String FORMAT_SS = "ss";
+  private static final String FORMAT_DASH = "dash";
+  private static final String FORMAT_HLS = "hls";
+  private static final String FORMAT_OTHER = "other";
 
-  // Stores scheduled pause point messages so we can cancel them later
-  @NonNull private final List<PlayerMessage> scheduledPausePointMessages = new ArrayList<>();
+  private ExoPlayer exoPlayer;
 
-  /** A closure-compatible signature since {@link java.util.function.Supplier} is API level 24. */
-  public interface ExoPlayerProvider {
-    /**
-     * Returns a new {@link ExoPlayer}.
-     *
-     * @return new instance.
-     */
-    @NonNull
-    ExoPlayer get();
-  }
+  private Surface surface;
 
-  /** A handler to run when dispose is called. */
-  public interface DisposeHandler {
-    void onDispose();
-  }
+  private final TextureRegistry.SurfaceTextureEntry textureEntry;
 
-  // TODO: Migrate to stable API, see https://github.com/flutter/flutter/issues/147039.
-  @UnstableApi
-  // Error thrown for this-escape warning on JDK 21+ due to https://bugs.openjdk.org/browse/JDK-8015831.
-  // Keeping behavior as-is and addressing the warning could cause a regression: https://github.com/flutter/packages/pull/10193
-  @SuppressWarnings("this-escape")
-  public VideoPlayer(
-      @NonNull VideoPlayerCallbacks events,
-      @NonNull MediaItem mediaItem,
-      @NonNull VideoPlayerOptions options,
-      @Nullable SurfaceProducer surfaceProducer,
-      @NonNull ExoPlayerProvider exoPlayerProvider) {
-    this.videoPlayerEvents = events;
-    this.surfaceProducer = surfaceProducer;
-    exoPlayer = exoPlayerProvider.get();
+  private QueuingEventSink eventSink;
 
-    // Try to get the track selector from the ExoPlayer if it was built with one
-    if (exoPlayer.getTrackSelector() instanceof DefaultTrackSelector) {
-      trackSelector = (DefaultTrackSelector) exoPlayer.getTrackSelector();
-    }
+  private final EventChannel eventChannel;
 
-    exoPlayer.setMediaItem(mediaItem);
+  private static final String USER_AGENT = "User-Agent";
+
+  @VisibleForTesting boolean isInitialized = false;
+
+  private final VideoPlayerOptions options;
+
+  private DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory();
+
+  // #region auto-pause
+  private PausePointManager pausePointManager;
+  // #endregion auto-pause
+
+  VideoPlayer(
+      Context context,
+      EventChannel eventChannel,
+      TextureRegistry.SurfaceTextureEntry textureEntry,
+      String dataSource,
+      String formatHint,
+      @NonNull Map<String, String> httpHeaders,
+      VideoPlayerOptions options) {
+    this.eventChannel = eventChannel;
+    this.textureEntry = textureEntry;
+    this.options = options;
+
+    ExoPlayer exoPlayer = new ExoPlayer.Builder(context).build();
+    Uri uri = Uri.parse(dataSource);
+
+    buildHttpDataSourceFactory(httpHeaders);
+    DataSource.Factory dataSourceFactory =
+        new DefaultDataSource.Factory(context, httpDataSourceFactory);
+
+    MediaSource mediaSource = buildMediaSource(uri, dataSourceFactory, formatHint);
+
+    exoPlayer.setMediaSource(mediaSource);
     exoPlayer.prepare();
-    exoPlayer.addListener(createExoPlayerEventListener(exoPlayer, surfaceProducer));
+
+    setUpVideoPlayer(exoPlayer, new QueuingEventSink());
+  }
+
+  // Constructor used to directly test members of this class.
+  @VisibleForTesting
+  VideoPlayer(
+      ExoPlayer exoPlayer,
+      EventChannel eventChannel,
+      TextureRegistry.SurfaceTextureEntry textureEntry,
+      VideoPlayerOptions options,
+      QueuingEventSink eventSink,
+      DefaultHttpDataSource.Factory httpDataSourceFactory) {
+    this.eventChannel = eventChannel;
+    this.textureEntry = textureEntry;
+    this.options = options;
+    this.httpDataSourceFactory = httpDataSourceFactory;
+
+    setUpVideoPlayer(exoPlayer, eventSink);
+  }
+
+  @VisibleForTesting
+  public void buildHttpDataSourceFactory(@NonNull Map<String, String> httpHeaders) {
+    final boolean httpHeadersNotEmpty = !httpHeaders.isEmpty();
+    final String userAgent =
+        httpHeadersNotEmpty && httpHeaders.containsKey(USER_AGENT)
+            ? httpHeaders.get(USER_AGENT)
+            : "ExoPlayer";
+
+    httpDataSourceFactory.setUserAgent(userAgent).setAllowCrossProtocolRedirects(true);
+
+    if (httpHeadersNotEmpty) {
+      httpDataSourceFactory.setDefaultRequestProperties(httpHeaders);
+    }
+  }
+
+  private MediaSource buildMediaSource(
+      Uri uri, DataSource.Factory mediaDataSourceFactory, String formatHint) {
+    int type;
+    if (formatHint == null) {
+      type = Util.inferContentType(uri);
+    } else {
+      switch (formatHint) {
+        case FORMAT_SS:
+          type = C.CONTENT_TYPE_SS;
+          break;
+        case FORMAT_DASH:
+          type = C.CONTENT_TYPE_DASH;
+          break;
+        case FORMAT_HLS:
+          type = C.CONTENT_TYPE_HLS;
+          break;
+        case FORMAT_OTHER:
+          type = C.CONTENT_TYPE_OTHER;
+          break;
+        default:
+          type = -1;
+          break;
+      }
+    }
+    switch (type) {
+      case C.CONTENT_TYPE_SS:
+        return new SsMediaSource.Factory(
+                new DefaultSsChunkSource.Factory(mediaDataSourceFactory), mediaDataSourceFactory)
+            .createMediaSource(MediaItem.fromUri(uri));
+      case C.CONTENT_TYPE_DASH:
+        return new DashMediaSource.Factory(
+                new DefaultDashChunkSource.Factory(mediaDataSourceFactory), mediaDataSourceFactory)
+            .createMediaSource(MediaItem.fromUri(uri));
+      case C.CONTENT_TYPE_HLS:
+        return new HlsMediaSource.Factory(mediaDataSourceFactory)
+            .createMediaSource(MediaItem.fromUri(uri));
+      case C.CONTENT_TYPE_OTHER:
+        return new ProgressiveMediaSource.Factory(mediaDataSourceFactory)
+            .createMediaSource(MediaItem.fromUri(uri));
+      default:
+        {
+          throw new IllegalStateException("Unsupported type: " + type);
+        }
+    }
+  }
+
+  private void setUpVideoPlayer(ExoPlayer exoPlayer, QueuingEventSink eventSink) {
+    this.exoPlayer = exoPlayer;
+    this.eventSink = eventSink;
+
+    // #region auto-pause
+    pausePointManager = new PausePointManager(exoPlayer, positionMs -> {
+      if (this.eventSink != null) {
+        Map<String, Object> event = new HashMap<>();
+        event.put("event", "autoPause");
+        event.put("position", positionMs);
+        this.eventSink.success(event);
+      }
+    });
+    // #endregion auto-pause
+
+    eventChannel.setStreamHandler(
+        new EventChannel.StreamHandler() {
+          @Override
+          public void onListen(Object o, EventChannel.EventSink sink) {
+            eventSink.setDelegate(sink);
+          }
+
+          @Override
+          public void onCancel(Object o) {
+            eventSink.setDelegate(null);
+          }
+        });
+
+    surface = new Surface(textureEntry.surfaceTexture());
+    exoPlayer.setVideoSurface(surface);
     setAudioAttributes(exoPlayer, options.mixWithOthers);
+
+    exoPlayer.addListener(
+        new Listener() {
+          private boolean isBuffering = false;
+
+          public void setBuffering(boolean buffering) {
+            if (isBuffering != buffering) {
+              isBuffering = buffering;
+              Map<String, Object> event = new HashMap<>();
+              event.put("event", isBuffering ? "bufferingStart" : "bufferingEnd");
+              eventSink.success(event);
+            }
+          }
+
+          @Override
+          public void onPlaybackStateChanged(final int playbackState) {
+            if (playbackState == Player.STATE_BUFFERING) {
+              setBuffering(true);
+              sendBufferingUpdate();
+            } else if (playbackState == Player.STATE_READY) {
+              if (!isInitialized) {
+                isInitialized = true;
+                sendInitialized();
+              }
+            } else if (playbackState == Player.STATE_ENDED) {
+              Map<String, Object> event = new HashMap<>();
+              event.put("event", "completed");
+              eventSink.success(event);
+            }
+
+            if (playbackState != Player.STATE_BUFFERING) {
+              setBuffering(false);
+            }
+          }
+
+          @Override
+          public void onPlayerError(@NonNull final PlaybackException error) {
+            setBuffering(false);
+            if (eventSink != null) {
+              eventSink.error("VideoError", "Video player had error " + error, null);
+            }
+          }
+
+          @Override
+          public void onIsPlayingChanged(boolean isPlaying) {
+            if (eventSink != null) {
+              Map<String, Object> event = new HashMap<>();
+              event.put("event", "isPlayingStateUpdate");
+              event.put("isPlaying", isPlaying);
+              eventSink.success(event);
+            }
+          }
+        });
   }
 
-  public void setDisposeHandler(@Nullable DisposeHandler handler) {
-    disposeHandler = handler;
+  void sendBufferingUpdate() {
+    Map<String, Object> event = new HashMap<>();
+    event.put("event", "bufferingUpdate");
+    List<? extends Number> range = Arrays.asList(0, exoPlayer.getBufferedPosition());
+    // iOS supports a list of buffered ranges, so here is a list with a single range.
+    event.put("values", Collections.singletonList(range));
+    eventSink.success(event);
   }
-
-  @NonNull
-  protected abstract ExoPlayerEventListener createExoPlayerEventListener(
-      @NonNull ExoPlayer exoPlayer, @Nullable SurfaceProducer surfaceProducer);
 
   private static void setAudioAttributes(ExoPlayer exoPlayer, boolean isMixMode) {
     exoPlayer.setAudioAttributes(
@@ -98,189 +274,99 @@ public abstract class VideoPlayer implements VideoPlayerInstanceApi {
         !isMixMode);
   }
 
-  @Override
-  public void play() {
-    exoPlayer.play();
+  void play() {
+    exoPlayer.setPlayWhenReady(true);
   }
 
-  @Override
-  public void pause() {
-    exoPlayer.pause();
+  void pause() {
+    exoPlayer.setPlayWhenReady(false);
   }
 
-  @Override
-  public void setLooping(boolean looping) {
-    exoPlayer.setRepeatMode(looping ? REPEAT_MODE_ALL : REPEAT_MODE_OFF);
+  void setLooping(boolean value) {
+    exoPlayer.setRepeatMode(value ? REPEAT_MODE_ALL : REPEAT_MODE_OFF);
   }
 
-  @Override
-  public void setVolume(double volume) {
-    float bracketedValue = (float) Math.max(0.0, Math.min(1.0, volume));
+  void setVolume(double value) {
+    float bracketedValue = (float) Math.max(0.0, Math.min(1.0, value));
     exoPlayer.setVolume(bracketedValue);
   }
 
-  @Override
-  public void setPlaybackSpeed(double speed) {
+  void setPlaybackSpeed(double value) {
     // We do not need to consider pitch and skipSilence for now as we do not handle them and
     // therefore never diverge from the default values.
-    final PlaybackParameters playbackParameters = new PlaybackParameters((float) speed);
+    final PlaybackParameters playbackParameters = new PlaybackParameters(((float) value));
 
     exoPlayer.setPlaybackParameters(playbackParameters);
   }
 
-  @Override
-  public long getCurrentPosition() {
+  void seekTo(int location) {
+    exoPlayer.seekTo(location);
+  }
+
+  long getPosition() {
     return exoPlayer.getCurrentPosition();
   }
 
-  @Override
-  public long getBufferedPosition() {
-    return exoPlayer.getBufferedPosition();
+  // #region auto-pause
+  void setPausePoints(@NonNull List<Long> pausePointsInMilliseconds) {
+    pausePointManager.setPausePoints(pausePointsInMilliseconds);
   }
 
-  @Override
-  public void seekTo(long position) {
-    exoPlayer.seekTo(position);
+  void clearAllPausePoints() {
+    pausePointManager.clearAllPausePoints();
   }
+  // #endregion auto-pause
 
-  @NonNull
-  public ExoPlayer getExoPlayer() {
-    return exoPlayer;
-  }
+  @SuppressWarnings("SuspiciousNameCombination")
+  @VisibleForTesting
+  void sendInitialized() {
+    if (isInitialized) {
+      Map<String, Object> event = new HashMap<>();
+      event.put("event", "initialized");
+      event.put("duration", exoPlayer.getDuration());
 
-  // TODO: Migrate to stable API, see https://github.com/flutter/flutter/issues/147039.
-  @UnstableApi
-  @Override
-  public @NonNull NativeAudioTrackData getAudioTracks() {
-    List<ExoPlayerAudioTrackData> audioTracks = new ArrayList<>();
+      if (exoPlayer.getVideoFormat() != null) {
+        Format videoFormat = exoPlayer.getVideoFormat();
+        int width = videoFormat.width;
+        int height = videoFormat.height;
+        int rotationDegrees = videoFormat.rotationDegrees;
+        // Switch the width/height if video was taken in portrait mode
+        if (rotationDegrees == 90 || rotationDegrees == 270) {
+          width = exoPlayer.getVideoFormat().height;
+          height = exoPlayer.getVideoFormat().width;
+        }
+        event.put("width", width);
+        event.put("height", height);
 
-    // Get the current tracks from ExoPlayer
-    Tracks tracks = exoPlayer.getCurrentTracks();
-
-    // Iterate through all track groups
-    for (int groupIndex = 0; groupIndex < tracks.getGroups().size(); groupIndex++) {
-      Tracks.Group group = tracks.getGroups().get(groupIndex);
-
-      // Only process audio tracks
-      if (group.getType() == C.TRACK_TYPE_AUDIO) {
-        for (int trackIndex = 0; trackIndex < group.length; trackIndex++) {
-          Format format = group.getTrackFormat(trackIndex);
-          boolean isSelected = group.isTrackSelected(trackIndex);
-
-          // Create audio track data with metadata
-          ExoPlayerAudioTrackData audioTrack =
-              new ExoPlayerAudioTrackData(
-                  (long) groupIndex,
-                  (long) trackIndex,
-                  format.label,
-                  format.language,
-                  isSelected,
-                  format.bitrate != Format.NO_VALUE ? (long) format.bitrate : null,
-                  format.sampleRate != Format.NO_VALUE ? (long) format.sampleRate : null,
-                  format.channelCount != Format.NO_VALUE ? (long) format.channelCount : null,
-                  format.codecs != null ? format.codecs : null);
-
-          audioTracks.add(audioTrack);
+        // Rotating the video with ExoPlayer does not seem to be possible with a Surface,
+        // so inform the Flutter code that the widget needs to be rotated to prevent
+        // upside-down playback for videos with rotationDegrees of 180 (other orientations work
+        // correctly without correction).
+        if (rotationDegrees == 180) {
+          event.put("rotationCorrection", rotationDegrees);
         }
       }
-    }
-    return new NativeAudioTrackData(audioTracks);
-  }
 
-  // TODO: Migrate to stable API, see https://github.com/flutter/flutter/issues/147039.
-  @UnstableApi
-  @Override
-  public void selectAudioTrack(long groupIndex, long trackIndex) {
-    if (trackSelector == null) {
-      throw new IllegalStateException("Cannot select audio track: track selector is null");
-    }
-
-    // Get current tracks
-    Tracks tracks = exoPlayer.getCurrentTracks();
-
-    if (groupIndex < 0 || groupIndex >= tracks.getGroups().size()) {
-      throw new IllegalArgumentException(
-          "Cannot select audio track: groupIndex "
-              + groupIndex
-              + " is out of bounds (available groups: "
-              + tracks.getGroups().size()
-              + ")");
-    }
-
-    Tracks.Group group = tracks.getGroups().get((int) groupIndex);
-
-    // Verify it's an audio track
-    if (group.getType() != C.TRACK_TYPE_AUDIO) {
-      throw new IllegalArgumentException(
-          "Cannot select audio track: group at index "
-              + groupIndex
-              + " is not an audio track (type: "
-              + group.getType()
-              + ")");
-    }
-
-    // Verify the track index is valid
-    if (trackIndex < 0 || (int) trackIndex >= group.length) {
-      throw new IllegalArgumentException(
-          "Cannot select audio track: trackIndex "
-              + trackIndex
-              + " is out of bounds (available tracks in group: "
-              + group.length
-              + ")");
-    }
-
-    // Get the track group and create a selection override
-    TrackGroup trackGroup = group.getMediaTrackGroup();
-    TrackSelectionOverride override = new TrackSelectionOverride(trackGroup, (int) trackIndex);
-
-    // Apply the track selection override
-    trackSelector.setParameters(
-        trackSelector.buildUponParameters().setOverrideForType(override).build());
-  }
-
-  @Override
-  public void setPausePoints(@NonNull List<Long> pausePointsInMilliseconds) {
-    // Remove any previously scheduled pause points before adding new ones
-    clearAllPausePoints();
-
-    for (Long positionMs : pausePointsInMilliseconds) {
-      PlayerMessage pausePointMessage = createPausePointMessage(positionMs);
-      scheduledPausePointMessages.add(pausePointMessage);
+      eventSink.success(event);
     }
   }
 
-  /**
-   * Creates a message that triggers when playback reaches the given position.
-   * The message pauses playback and notifies Flutter.
-   */
-  private PlayerMessage createPausePointMessage(Long positionMs) {
-    return exoPlayer.createMessage((messageType, payload) -> {
-          exoPlayer.pause();
-          videoPlayerEvents.onAutoPauseTriggered(positionMs);
-        })
-        .setLooper(Looper.getMainLooper())
-        .setPosition(0, positionMs)
-        // Using false so the pause point fires again if user seeks back and replays.
-        // Note: This has a known ExoPlayer bug where seeking exactly to this position
-        // can cause repeated callbacks, but we accept this trade-off.
-        .setDeleteAfterDelivery(false)
-        .send();
-  }
-
-  @Override
-  public void clearAllPausePoints() {
-    for (PlayerMessage message : scheduledPausePointMessages) {
-      message.cancel();
+  void dispose() {
+    // #region auto-pause
+    if (pausePointManager != null) {
+      pausePointManager.dispose();
     }
-    scheduledPausePointMessages.clear();
-  }
-
-  public void dispose() {
-    if (disposeHandler != null) {
-      disposeHandler.onDispose();
+    // #endregion auto-pause
+    if (isInitialized) {
+      exoPlayer.stop();
     }
-    // Clean up pause points before releasing
-    clearAllPausePoints();
-    exoPlayer.release();
+    textureEntry.release();
+    eventChannel.setStreamHandler(null);
+    if (surface != null) {
+      surface.release();
+    }
+    if (exoPlayer != null) {
+      exoPlayer.release();
+    }
   }
 }

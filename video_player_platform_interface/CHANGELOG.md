@@ -1,36 +1,3 @@
-## NEXT
-
-* Updates minimum supported SDK version to Flutter 3.32/Dart 3.8.
-
-## 6.6.0
-
-* Adds `VideoAudioTrack` class and `getAudioTracks()`, `selectAudioTrack()`, `isAudioTrackSupportAvailable()` methods for audio track management.
-
-## 6.5.0
-
-* Adds a `setAllowBackgroundPlayback` method to dynamically control background playback.
-* Updates minimum supported SDK version to Flutter 3.29/Dart 3.7.
-
-## 6.4.0
-
-* Adds HTML5 video poster support as a VideoPlayerWebOptions.
-* Updates minimum supported SDK version to Flutter 3.27/Dart 3.6.
-
-## 6.3.0
-
-* Adds support for platform views as an optional way of displaying a video.
-* Updates minimum supported SDK version to Flutter 3.22/Dart 3.4.
-
-## 6.2.3
-
-* Updates minimum supported SDK version to Flutter 3.19/Dart 3.3.
-* Clarified that `VideoEventType.initialized` cannot be sent more than once.
-
-## 6.2.2
-
-* Updates minimum required plugin_platform_interface version to 2.1.7.
-* Updates minimum supported SDK version to Flutter 3.10/Dart 3.0.
-
 ## 6.2.1
 
 * Adds pub topics to package metadata.

@@ -1,4 +1,4 @@
-// Copyright 2013 The Flutter Authors
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,32 +9,24 @@ void main() {
   test(
     'VideoPlayerOptions controls defaults to VideoPlayerWebOptionsControls.disabled()',
     () {
-      const options = VideoPlayerWebOptions();
+      const VideoPlayerWebOptions options = VideoPlayerWebOptions();
       expect(options.controls, const VideoPlayerWebOptionsControls.disabled());
     },
   );
 
-  test('VideoPlayerOptions allowContextMenu defaults to true', () {
-    const options = VideoPlayerWebOptions();
-    expect(options.allowContextMenu, isTrue);
-  });
+  test(
+    'VideoPlayerOptions allowContextMenu defaults to true',
+    () {
+      const VideoPlayerWebOptions options = VideoPlayerWebOptions();
+      expect(options.allowContextMenu, isTrue);
+    },
+  );
 
-  test('VideoPlayerOptions allowRemotePlayback defaults to true', () {
-    const options = VideoPlayerWebOptions();
-    expect(options.allowRemotePlayback, isTrue);
-  });
-
-  group('VideoPlayerOptions poster', () {
-    test('defaults to null', () {
-      const options = VideoPlayerWebOptions();
-      expect(options.poster, null);
-    });
-
-    test('with a value', () {
-      final options = VideoPlayerWebOptions(
-        poster: Uri.parse('https://example.com/poster.jpg'),
-      );
-      expect(options.poster, Uri.parse('https://example.com/poster.jpg'));
-    });
-  });
+  test(
+    'VideoPlayerOptions allowRemotePlayback defaults to true',
+    () {
+      const VideoPlayerWebOptions options = VideoPlayerWebOptions();
+      expect(options.allowRemotePlayback, isTrue);
+    },
+  );
 }

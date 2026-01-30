@@ -1,8 +1,7 @@
-// Copyright 2013 The Flutter Authors
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
@@ -10,74 +9,18 @@ import 'package:video_player_platform_interface/video_player_platform_interface.
 import 'video_player_test.dart' show FakeVideoPlayerPlatform;
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  late FakeVideoPlayerPlatform fakeVideoPlayerPlatform;
-
-  setUp(() {
-    VideoPlayerPlatform.instance = fakeVideoPlayerPlatform =
-        FakeVideoPlayerPlatform();
-  });
-
+  // This test needs to run first and therefore needs to be the only test
+  // in this file.
   test('plugin initialized', () async {
-    final controller = VideoPlayerController.networkUrl(
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final FakeVideoPlayerPlatform fakeVideoPlayerPlatform =
+        FakeVideoPlayerPlatform();
+    VideoPlayerPlatform.instance = fakeVideoPlayerPlatform;
+
+    final VideoPlayerController controller = VideoPlayerController.networkUrl(
       Uri.parse('https://127.0.0.1'),
     );
     await controller.initialize();
     expect(fakeVideoPlayerPlatform.calls.first, 'init');
-  });
-
-  test('web configuration is applied (web only)', () async {
-    const expected = VideoPlayerWebOptions(
-      allowContextMenu: false,
-      allowRemotePlayback: false,
-      controls: VideoPlayerWebOptionsControls.enabled(),
-    );
-
-    final controller = VideoPlayerController.networkUrl(
-      Uri.parse('https://127.0.0.1'),
-      videoPlayerOptions: VideoPlayerOptions(webOptions: expected),
-    );
-    await controller.initialize();
-
-    expect(
-      () {
-        fakeVideoPlayerPlatform.calls.singleWhere(
-          (String call) => call == 'setWebOptions',
-        );
-      },
-      returnsNormally,
-      reason: 'setWebOptions must be called exactly once.',
-    );
-    expect(
-      fakeVideoPlayerPlatform.webOptions[controller.playerId],
-      expected,
-      reason: 'web options must be passed to the platform',
-    );
-  }, skip: !kIsWeb);
-
-  test('video view type is applied', () async {
-    const VideoViewType expected = VideoViewType.platformView;
-
-    final controller = VideoPlayerController.networkUrl(
-      Uri.parse('https://127.0.0.1'),
-      viewType: expected,
-    );
-    await controller.initialize();
-
-    expect(
-      () {
-        fakeVideoPlayerPlatform.calls.singleWhere(
-          (String call) => call == 'createWithOptions',
-        );
-      },
-      returnsNormally,
-      reason: 'createWithOptions must be called exactly once.',
-    );
-    expect(
-      fakeVideoPlayerPlatform.viewTypes[controller.playerId],
-      expected,
-      reason: 'view type must be passed to the platform',
-    );
   });
 }

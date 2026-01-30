@@ -6,13 +6,15 @@
 
 A Flutter plugin for iOS, Android and Web for playing back video on a Widget surface.
 
-|             | Android | iOS   | macOS  | Web   |
-|-------------|---------|-------|--------|-------|
-| **Support** | SDK 24+ | 13.0+ | 10.15+ | Any\* |
+|             | Android | iOS   | Web   |
+|-------------|---------|-------|-------|
+| **Support** | SDK 16+ | 11.0+ | Any\* |
 
 ![The example app running in iOS](https://github.com/flutter/packages/blob/main/packages/video_player/video_player/doc/demo_ipod.gif?raw=true)
 
-## Setup
+## Installation
+
+First, add `video_player` as a [dependency in your pubspec.yaml file](https://flutter.dev/using-packages/).
 
 ### iOS
 
@@ -31,15 +33,9 @@ Android Manifest file, located in `<project root>/android/app/src/main/AndroidMa
 <uses-permission android:name="android.permission.INTERNET"/>
 ```
 
-### macOS
-
-If you are using network-based videos, you will need to [add the
-`com.apple.security.network.client`
-entitlement](https://flutter.dev/to/macos-entitlements)
-
 ### Web
 
-> The Web platform does **not** support `dart:io`, so avoid using the `VideoPlayerController.file` constructor for the plugin. Using the constructor attempts to create a `VideoPlayerController.file` that will throw an `UnimplementedError`.
+> The Web platform does **not** suppport `dart:io`, so avoid using the `VideoPlayerController.file` constructor for the plugin. Using the constructor attempts to create a `VideoPlayerController.file` that will throw an `UnimplementedError`.
 
 \* Different web browsers may have different video-playback capabilities (supported formats, autoplay...). Check [package:video_player_web](https://pub.dev/packages/video_player_web) for more web-specific information.
 
@@ -47,7 +43,7 @@ The `VideoPlayerOptions.mixWithOthers` option can't be implemented in web, at le
 
 ## Supported Formats
 
-- On iOS and macOS, the backing player is [AVPlayer](https://developer.apple.com/documentation/avfoundation/avplayer).
+- On iOS, the backing player is [AVPlayer](https://developer.apple.com/documentation/avfoundation/avplayer).
   The supported formats vary depending on the version of iOS, [AVURLAsset](https://developer.apple.com/documentation/avfoundation/avurlasset) class
   has [audiovisualTypes](https://developer.apple.com/documentation/avfoundation/avurlasset/1386800-audiovisualtypes?language=objc) that you can query for supported av formats.
 - On Android, the backing player is [ExoPlayer](https://google.github.io/ExoPlayer/),
@@ -77,16 +73,12 @@ class _VideoAppState extends State<VideoApp> {
   @override
   void initState() {
     super.initState();
-    _controller =
-        VideoPlayerController.networkUrl(
-            Uri.parse(
-              'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
-            ),
-          )
-          ..initialize().then((_) {
-            // Ensure the first frame is shown after the video is initialized, even before the play button has been pressed.
-            setState(() {});
-          });
+    _controller = VideoPlayerController.networkUrl(Uri.parse(
+        'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4'))
+      ..initialize().then((_) {
+        // Ensure the first frame is shown after the video is initialized, even before the play button has been pressed.
+        setState(() {});
+      });
   }
 
   @override
@@ -120,11 +112,10 @@ class _VideoAppState extends State<VideoApp> {
 
   @override
   void dispose() {
-    _controller.dispose();
     super.dispose();
+    _controller.dispose();
   }
 }
-
 ```
 
 ## Usage
@@ -145,10 +136,3 @@ and so on.
 To learn about playback speed limitations, see the [`setPlaybackSpeed` method documentation](https://pub.dev/documentation/video_player/latest/video_player/VideoPlayerController/setPlaybackSpeed.html).
 
 Furthermore, see the example app for an example playback speed implementation.
-
-### Video view type
-
-You can set the video view type of your controller (instance of `VideoPlayerController`) during its creation by passing the `videoViewType` argument.  
-If set to `VideoViewType.platformView`, platform views will be used instead of texture view on supported platforms.
-
-The relative performance of the different view types may vary by platform, and on some platforms the use of platform views may have correctness issues in certain circumstances due to limitations of Flutter's platform view system.

@@ -1,108 +1,99 @@
-// Copyright 2013 The Flutter Authors
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 import 'package:pigeon/pigeon.dart';
 
-@ConfigurePigeon(
-  PigeonOptions(
-    dartOut: 'lib/src/messages.g.dart',
-    objcHeaderOut:
-        'darwin/video_player_avfoundation/Sources/video_player_avfoundation/include/video_player_avfoundation/messages.g.h',
-    objcSourceOut:
-        'darwin/video_player_avfoundation/Sources/video_player_avfoundation/messages.g.m',
-    objcOptions: ObjcOptions(
-      prefix: 'FVP',
-      headerIncludePath: './include/video_player_avfoundation/messages.g.h',
-    ),
-    copyrightHeader: 'pigeons/copyright.txt',
+@ConfigurePigeon(PigeonOptions(
+  dartOut: 'lib/src/messages.g.dart',
+  dartTestOut: 'test/test_api.g.dart',
+  objcHeaderOut: 'ios/Classes/messages.g.h',
+  objcSourceOut: 'ios/Classes/messages.g.m',
+  objcOptions: ObjcOptions(
+    prefix: 'FLT',
   ),
-)
-/// Information passed to the platform view creation.
-class PlatformVideoViewCreationParams {
-  const PlatformVideoViewCreationParams({required this.playerId});
-
-  final int playerId;
+  copyrightHeader: 'pigeons/copyright.txt',
+))
+class TextureMessage {
+  TextureMessage(this.textureId);
+  int textureId;
 }
 
-class CreationOptions {
-  CreationOptions({required this.uri, required this.httpHeaders});
-
-  String uri;
-  Map<String, String> httpHeaders;
+class LoopingMessage {
+  LoopingMessage(this.textureId, this.isLooping);
+  int textureId;
+  bool isLooping;
 }
 
-class TexturePlayerIds {
-  TexturePlayerIds({required this.playerId, required this.textureId});
-
-  final int playerId;
-  final int textureId;
+class VolumeMessage {
+  VolumeMessage(this.textureId, this.volume);
+  int textureId;
+  double volume;
 }
 
-/// Raw audio track data from AVMediaSelectionOption (for HLS streams).
-class MediaSelectionAudioTrackData {
-  MediaSelectionAudioTrackData({
-    required this.index,
-    this.displayName,
-    this.languageCode,
-    required this.isSelected,
-    this.commonMetadataTitle,
-  });
-
-  int index;
-  String? displayName;
-  String? languageCode;
-  bool isSelected;
-  String? commonMetadataTitle;
+class PlaybackSpeedMessage {
+  PlaybackSpeedMessage(this.textureId, this.speed);
+  int textureId;
+  double speed;
 }
 
-@HostApi()
+class PositionMessage {
+  PositionMessage(this.textureId, this.position);
+  int textureId;
+  int position;
+}
+
+class CreateMessage {
+  CreateMessage({required this.httpHeaders});
+  String? asset;
+  String? uri;
+  String? packageName;
+  String? formatHint;
+  Map<String?, String?> httpHeaders;
+}
+
+class MixWithOthersMessage {
+  MixWithOthersMessage(this.mixWithOthers);
+  bool mixWithOthers;
+}
+
+// #region auto-pause
+class PausePointsMessage {
+  PausePointsMessage(this.textureId, this.pausePointsInMilliseconds);
+  int textureId;
+  List<int?> pausePointsInMilliseconds;
+}
+// #endregion auto-pause
+
+@HostApi(dartHostTestHandler: 'TestHostVideoPlayerApi')
 abstract class AVFoundationVideoPlayerApi {
   @ObjCSelector('initialize')
   void initialize();
-  // Creates a new player using a platform view for rendering and returns its
-  // ID.
-  @ObjCSelector('createPlatformViewPlayerWithOptions:')
-  int createForPlatformView(CreationOptions params);
-  // Creates a new player using a texture for rendering and returns its IDs.
-  @ObjCSelector('createTexturePlayerWithOptions:')
-  TexturePlayerIds createForTextureView(CreationOptions creationOptions);
-  @ObjCSelector('setMixWithOthers:')
-  void setMixWithOthers(bool mixWithOthers);
-  @ObjCSelector('fileURLForAssetWithName:package:')
-  String? getAssetUrl(String asset, String? package);
-}
-
-@HostApi()
-abstract class VideoPlayerInstanceApi {
+  @ObjCSelector('create:')
+  TextureMessage create(CreateMessage msg);
+  @ObjCSelector('dispose:')
+  void dispose(TextureMessage msg);
   @ObjCSelector('setLooping:')
-  void setLooping(bool looping);
+  void setLooping(LoopingMessage msg);
   @ObjCSelector('setVolume:')
-  void setVolume(double volume);
+  void setVolume(VolumeMessage msg);
   @ObjCSelector('setPlaybackSpeed:')
-  void setPlaybackSpeed(double speed);
-  void play();
-  @ObjCSelector('position')
-  int getPosition();
+  void setPlaybackSpeed(PlaybackSpeedMessage msg);
+  @ObjCSelector('play:')
+  void play(TextureMessage msg);
+  @ObjCSelector('position:')
+  PositionMessage position(TextureMessage msg);
   @async
   @ObjCSelector('seekTo:')
-  void seekTo(int position);
-  void pause();
-  void dispose();
-  @ObjCSelector('getAudioTracks')
-  List<MediaSelectionAudioTrackData> getAudioTracks();
-  @ObjCSelector('selectAudioTrackAtIndex:')
-  void selectAudioTrack(int trackIndex);
-
-  /// Sets positions where playback will automatically pause.
-  ///
-  /// [pausePointsInMilliseconds] is a list of positions in milliseconds where
-  /// playback should automatically pause. Pause points fire every time playback
-  /// crosses them, including after seeking back and replaying.
+  void seekTo(PositionMessage msg);
+  @ObjCSelector('pause:')
+  void pause(TextureMessage msg);
+  @ObjCSelector('setMixWithOthers:')
+  void setMixWithOthers(MixWithOthersMessage msg);
+  // #region auto-pause
   @ObjCSelector('setPausePoints:')
-  void setPausePoints(List<int> pausePointsInMilliseconds);
-
-  /// Removes all scheduled pause points.
-  @ObjCSelector('clearAllPausePoints')
-  void clearAllPausePoints();
+  void setPausePoints(PausePointsMessage msg);
+  @ObjCSelector('clearAllPausePoints:')
+  void clearAllPausePoints(TextureMessage msg);
+  // #endregion auto-pause
 }

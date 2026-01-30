@@ -1,218 +1,84 @@
-// Copyright 2013 The Flutter Authors
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 import 'package:pigeon/pigeon.dart';
 
-@ConfigurePigeon(
-  PigeonOptions(
-    dartOut: 'lib/src/messages.g.dart',
-    kotlinOut:
-        'android/src/main/kotlin/io/flutter/plugins/videoplayer/Messages.kt',
-    kotlinOptions: KotlinOptions(package: 'io.flutter.plugins.videoplayer'),
-    copyrightHeader: 'pigeons/copyright.txt',
+@ConfigurePigeon(PigeonOptions(
+  dartOut: 'lib/src/messages.g.dart',
+  dartTestOut: 'test/test_api.g.dart',
+  javaOut: 'android/src/main/java/io/flutter/plugins/videoplayer/Messages.java',
+  javaOptions: JavaOptions(
+    package: 'io.flutter.plugins.videoplayer',
   ),
-)
-/// Pigeon equivalent of video_platform_interface's VideoFormat.
-enum PlatformVideoFormat { dash, hls, ss }
-
-/// Pigeon equivalent of Player's playback state.
-/// https://developer.android.com/media/media3/exoplayer/listening-to-player-events#playback-state
-enum PlatformPlaybackState { idle, buffering, ready, ended, unknown }
-
-sealed class PlatformVideoEvent {}
-
-/// Sent when the video is initialized and ready to play.
-class InitializationEvent extends PlatformVideoEvent {
-  /// The video duration in milliseconds.
-  late final int duration;
-
-  /// The width of the video in pixels.
-  late final int width;
-
-  /// The height of the video in pixels.
-  late final int height;
-
-  /// The rotation that should be applied during playback.
-  late final int rotationCorrection;
+  copyrightHeader: 'pigeons/copyright.txt',
+))
+class TextureMessage {
+  TextureMessage(this.textureId);
+  int textureId;
 }
 
-/// Sent when the video state changes.
-///
-/// Corresponds to ExoPlayer's onPlaybackStateChanged.
-class PlaybackStateChangeEvent extends PlatformVideoEvent {
-  late final PlatformPlaybackState state;
+class LoopingMessage {
+  LoopingMessage(this.textureId, this.isLooping);
+  int textureId;
+  bool isLooping;
 }
 
-/// Sent when the video starts or stops playing.
-///
-/// Corresponds to ExoPlayer's onIsPlayingChanged.
-class IsPlayingStateEvent extends PlatformVideoEvent {
-  late final bool isPlaying;
+class VolumeMessage {
+  VolumeMessage(this.textureId, this.volume);
+  int textureId;
+  double volume;
 }
 
-/// Sent when audio tracks change.
-///
-/// This includes when the selected audio track changes after calling selectAudioTrack.
-/// Corresponds to ExoPlayer's onTracksChanged.
-class AudioTrackChangedEvent extends PlatformVideoEvent {
-  /// The ID of the newly selected audio track, if any.
-  late final String? selectedTrackId;
+class PlaybackSpeedMessage {
+  PlaybackSpeedMessage(this.textureId, this.speed);
+  int textureId;
+  double speed;
 }
 
-/// Sent when playback automatically pauses at a scheduled pause point.
-///
-/// This event is fired when playback reaches a position set via setPausePoints.
-class AutoPauseTriggeredEvent extends PlatformVideoEvent {
-  /// The playback position (in milliseconds) where the auto-pause occurred.
-  late final int positionInMilliseconds;
+class PositionMessage {
+  PositionMessage(this.textureId, this.position);
+  int textureId;
+  int position;
 }
 
-/// Information passed to the platform view creation.
-class PlatformVideoViewCreationParams {
-  const PlatformVideoViewCreationParams({required this.playerId});
-
-  final int playerId;
+class CreateMessage {
+  CreateMessage({required this.httpHeaders});
+  String? asset;
+  String? uri;
+  String? packageName;
+  String? formatHint;
+  Map<String?, String?> httpHeaders;
 }
 
-class CreationOptions {
-  CreationOptions({required this.uri, required this.httpHeaders});
-  String uri;
-  PlatformVideoFormat? formatHint;
-  Map<String, String> httpHeaders;
-  String? userAgent;
+class MixWithOthersMessage {
+  MixWithOthersMessage(this.mixWithOthers);
+  bool mixWithOthers;
 }
 
-class TexturePlayerIds {
-  TexturePlayerIds({required this.playerId, required this.textureId});
-
-  final int playerId;
-  final int textureId;
+// #region auto-pause
+class PausePointsMessage {
+  PausePointsMessage(this.textureId, this.pausePointsInMilliseconds);
+  int textureId;
+  List<int?> pausePointsInMilliseconds;
 }
+// #endregion auto-pause
 
-class PlaybackState {
-  PlaybackState({required this.playPosition, required this.bufferPosition});
-
-  /// The current playback position, in milliseconds.
-  final int playPosition;
-
-  /// The current buffer position, in milliseconds.
-  final int bufferPosition;
-}
-
-/// Represents an audio track in a video.
-class AudioTrackMessage {
-  AudioTrackMessage({
-    required this.id,
-    required this.label,
-    required this.language,
-    required this.isSelected,
-    this.bitrate,
-    this.sampleRate,
-    this.channelCount,
-    this.codec,
-  });
-
-  String id;
-  String label;
-  String language;
-  bool isSelected;
-  int? bitrate;
-  int? sampleRate;
-  int? channelCount;
-  String? codec;
-}
-
-/// Raw audio track data from ExoPlayer Format objects.
-class ExoPlayerAudioTrackData {
-  ExoPlayerAudioTrackData({
-    required this.groupIndex,
-    required this.trackIndex,
-    this.label,
-    this.language,
-    required this.isSelected,
-    this.bitrate,
-    this.sampleRate,
-    this.channelCount,
-    this.codec,
-  });
-
-  int groupIndex;
-  int trackIndex;
-  String? label;
-  String? language;
-  bool isSelected;
-  int? bitrate;
-  int? sampleRate;
-  int? channelCount;
-  String? codec;
-}
-
-/// Container for raw audio track data from Android ExoPlayer.
-class NativeAudioTrackData {
-  NativeAudioTrackData({this.exoPlayerTracks});
-
-  /// ExoPlayer-based tracks
-  List<ExoPlayerAudioTrackData>? exoPlayerTracks;
-}
-
-@HostApi()
+@HostApi(dartHostTestHandler: 'TestHostVideoPlayerApi')
 abstract class AndroidVideoPlayerApi {
   void initialize();
-  // Creates a new player using a platform view for rendering and returns its
-  // ID.
-  int createForPlatformView(CreationOptions options);
-  // Creates a new player using a texture for rendering and returns its IDs.
-  TexturePlayerIds createForTextureView(CreationOptions options);
-  void dispose(int playerId);
-  void setMixWithOthers(bool mixWithOthers);
-  String getLookupKeyForAsset(String asset, String? packageName);
-}
-
-@HostApi()
-abstract class VideoPlayerInstanceApi {
-  /// Sets whether to automatically loop playback of the video.
-  void setLooping(bool looping);
-
-  /// Sets the volume, with 0.0 being muted and 1.0 being full volume.
-  void setVolume(double volume);
-
-  /// Sets the playback speed as a multiple of normal speed.
-  void setPlaybackSpeed(double speed);
-
-  /// Begins playback if the video is not currently playing.
-  void play();
-
-  /// Pauses playback if the video is currently playing.
-  void pause();
-
-  /// Seeks to the given playback position, in milliseconds.
-  void seekTo(int position);
-
-  /// Returns the current playback position, in milliseconds.
-  int getCurrentPosition();
-
-  /// Returns the current buffer position, in milliseconds.
-  int getBufferedPosition();
-
-  /// Gets the available audio tracks for the video.
-  NativeAudioTrackData getAudioTracks();
-
-  /// Selects which audio track is chosen for playback from its [groupIndex] and [trackIndex]
-  void selectAudioTrack(int groupIndex, int trackIndex);
-
-  /// Sets positions where playback will automatically pause.
-  ///
-  /// [pausePointsInMilliseconds] is a list of positions in milliseconds where
-  /// playback should automatically pause. Pause points fire every time playback
-  /// crosses them, including after seeking back and replaying.
-  void setPausePoints(List<int> pausePointsInMilliseconds);
-
-  /// Removes all scheduled pause points.
-  void clearAllPausePoints();
-}
-
-@EventChannelApi()
-abstract class VideoEventChannel {
-  PlatformVideoEvent videoEvents();
+  TextureMessage create(CreateMessage msg);
+  void dispose(TextureMessage msg);
+  void setLooping(LoopingMessage msg);
+  void setVolume(VolumeMessage msg);
+  void setPlaybackSpeed(PlaybackSpeedMessage msg);
+  void play(TextureMessage msg);
+  PositionMessage position(TextureMessage msg);
+  void seekTo(PositionMessage msg);
+  void pause(TextureMessage msg);
+  void setMixWithOthers(MixWithOthersMessage msg);
+  // #region auto-pause
+  void setPausePoints(PausePointsMessage msg);
+  void clearAllPausePoints(TextureMessage msg);
+  // #endregion auto-pause
 }
